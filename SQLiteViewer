@@ -1,0 +1,160 @@
+package viewer;
+
+import org.sqlite.*;
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.event.*;
+import java.io.File;
+import java.sql.*;
+import java.util.*;
+
+public class SQLiteViewer extends JFrame {
+    private JTextField textField;
+    private JComboBox<String> comboBox;
+    private JTextArea textArea;
+    private JTable table;
+    private final ArrayList<String> columnName = new ArrayList<>();
+    private final ArrayList<Object> data = new ArrayList<>();
+
+    public SQLiteViewer() {
+        super("SQLite Viewer"); //calls the constructor for the superclass (JFrame) and passes in a title for the frame.
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); //sets the default close operation for the frame to exit the program when the frame is closed.
+        setSize(1500, 800);
+        setLayout(null); // to set the position and size components, null - specify the position and size of the components manually
+        setResizable(false);  //frame non-resizable // рамка без изменения размера
+        setLocationRelativeTo(null);  //sets the frame's location to the center of the screen
+        initComponents();
+        setVisible(true);
+    }
+
+    private void initComponents() {
+        textField = new JTextField();
+        JButton openButton = new JButton("Open");
+        comboBox = new JComboBox<>();
+        textArea = new JTextArea();
+        JButton buttonExecute = new JButton("Execute");
+        table = new JTable();
+
+        buttonExecute.setEnabled(false);
+        textArea.setEnabled(false);
+
+        textField.setName("FileNameTextField");
+        openButton.setName("OpenFileButton");
+        comboBox.setName("TablesComboBox");
+        textArea.setName("QueryTextArea");
+        buttonExecute.setName("ExecuteQueryButton");
+        table.setName("Table");
+
+        textField.setBounds(20,20, 1290,30);
+        openButton.setBounds(1350,20,100,25);
+        comboBox.setBounds(20,60, 1430,20);
+        textArea.setBounds(20,100, 1290,250);
+        buttonExecute.setBounds(1350,100,100,25);
+        table.setBounds(20, 400,1430,300);
+
+        openButton.addActionListener(new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String fileName = textField.getText(); //retrieves the text from a text field
+                File file = new File(fileName);
+                String url = "jdbc:sqlite:" + fileName;
+                if (!file.exists()) {
+                    buttonExecute.setEnabled(false);
+                    textArea.setEnabled(false);
+                    JOptionPane.showMessageDialog(null, "File doesn't exist!", "Error", JOptionPane.ERROR_MESSAGE);
+                } else {
+                    if (!fileName.isEmpty()) {
+                        buttonExecute.setEnabled(true);
+                        textArea.setEnabled(true);
+                        conSQL(url);
+                    }
+                }
+            }
+        });
+
+        comboBox.addActionListener(new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (comboBox.getSelectedItem() != null) {
+                    String tableName = (String) comboBox.getSelectedItem();
+                    String query = "SELECT * FROM " + tableName;
+                    textArea.setText(query + ";");
+                }
+            }
+        });
+
+        buttonExecute.addActionListener(new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String query = textArea.getText();
+                try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + textField.getText())) {
+                    try (Statement stmt = conn.createStatement();ResultSet rs = stmt.executeQuery(query)) {
+                        table = createTable(rs);
+                        JScrollPane scrollPane = new JScrollPane(table);
+                        scrollPane.setBounds(20, 400,1430,300);
+                        add(scrollPane);
+                        revalidate();
+                        repaint();
+                    } catch (SQLException ee) {
+                        JOptionPane.showMessageDialog(null, "SQL error: " + ee.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+
+        add(textField);
+        add(openButton);
+        add(comboBox);
+        add(textArea);
+        add(buttonExecute);
+        add(table);
+    }
+
+    private JTable createTable(ResultSet rs) {
+        try {
+            ResultSetMetaData md = rs.getMetaData();
+            int columns = md.getColumnCount();
+            // get column name
+            for (int i = 1; i <= columns; i++) {
+                columnName.add(md.getColumnName(i));
+            }
+            // get data
+            while (rs.next()) {
+                ArrayList<Object> row = new ArrayList<>();
+                for (int i = 1; i <= columns; i++) {
+                    row.add(rs.getObject(i));
+                }
+                data.add(row.toArray());
+            }
+            DefaultTableModel model = new DefaultTableModel(data.toArray(new Object[][] {}), columnName.toArray());
+            table.setModel(model);
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return table;
+    }
+
+    // explain in OneNote
+    private void conSQL(String url) {
+        SQLiteDataSource dataSource = new SQLiteDataSource();
+        dataSource.setUrl(url);
+        try {
+            Connection conn = dataSource.getConnection();
+            if (conn.isValid(5)) {
+                System.out.println("Connection is valid.");
+            }
+            Statement stmt = conn.createStatement();
+            comboBox.removeAllItems();
+            ResultSet rs = stmt.executeQuery("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'");
+            while (rs.next()) {
+                comboBox.addItem(rs.getString("name"));
+            }
+            conn.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
